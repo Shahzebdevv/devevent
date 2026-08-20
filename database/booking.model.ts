@@ -36,9 +36,8 @@ const BookingSchema = new Schema<IBooking>(
   }
 );
 
-// FIXED: Removed the incorrect 'this as IBooking' casting.
-// 'this' inside a regular function in a pre-save hook natively points to the document being saved.
-BookingSchema.pre('save', async function (next) {
+// Mongoose 9 async middleware resolves or rejects instead of using `next`.
+BookingSchema.pre('save', async function () {
   // Only validate eventId if it's new or modified
   if (this.isModified('eventId') || this.isNew) {
     try {
@@ -47,17 +46,18 @@ BookingSchema.pre('save', async function (next) {
       if (!eventExists) {
         const error = new Error(`Event with ID ${this.eventId} does not exist`);
         error.name = 'ValidationError';
-        return next(error);
+        throw error;
       }
-    } catch (err) {
-      // FIXED: Added 'err' tracking to catch actual database failures or cast formatting issues
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'ValidationError') {
+        throw error;
+      }
+
       const validationError = new Error('Invalid events ID format or database error');
       validationError.name = 'ValidationError';
-      return next(validationError);
+      throw validationError;
     }
   }
-
-  next();
 });
 
 // Create index on eventId for faster queries
